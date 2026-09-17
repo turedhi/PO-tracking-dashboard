@@ -3,9 +3,13 @@ import pandas as pd
 import numpy as np
 import re
 import io
+import os
 import plotly.express as px
 
 st.set_page_config(page_title="PO Tracking Dashboard", page_icon="📦", layout="wide")
+
+OUTPUT_FOLDER = "saved_reports"
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 st.title("📦 Dashboard Tracking Pengadaan Barang")
 st.markdown("Unggah file PR dan PO terbaru untuk memproses dan memperbarui status pelacakan barang.")
@@ -21,14 +25,27 @@ with st.sidebar:
     file_po_impor = st.file_uploader("4. PO 2026 Impor", type=['xlsx'])
     file_inbound = st.file_uploader("5. Inbound 2025-2026", type=['xlsx'])
     
-    process_btn = st.button("🚀 Proses Data", use_container_width=True, type="primary")
+    process_btn = st.button("🚀 Proses & Simpan Data", use_container_width=True, type="primary")
+
+    st.divider()
+    st.subheader("📁 Arsip / Download Sewaktu-waktu")
+    saved_files = os.listdir(OUTPUT_FOLDER)
+    selected_saved = st.selectbox("Pilih file tersimpan:", ["-- Pilih --"] + saved_files)
+    if selected_saved != "-- Pilih --":
+        file_path_dl = os.path.join(OUTPUT_FOLDER, selected_saved)
+        with open(file_path_dl, "rb") as f:
+            st.download_button(
+                label=f"📥 Download {selected_saved}",
+                data=f.read(),
+                file_name=selected_saved,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
 # ==========================================
 # 2. LOGIKA PEMROSESAN DATA
 # ==========================================
 @st.cache_data
 def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
-    # Proses PR 2026 (Base)
     pr_df = pd.read_excel(pr_new, header=1)
     pr_data = pr_df[['Date', 'PR Number \n(Manual)', 'Item \nCode', 'Item Description', 'Qty']].copy()
     pr_data.columns = ['PR_Date', 'PR_Manual_No', 'Item_Code', 'Item_Name', 'PR_Qty']
@@ -37,10 +54,8 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     pr_data['PR_Date'] = pd.to_datetime(pr_data['PR_Date'], errors='coerce')
     pr_data = pr_data[pr_data['PR_Manual_No'].notna() & (pr_data['PR_Manual_No'] != '') & (pr_data['PR_Manual_No'].astype(str) != 'nan')]
 
-    # Ambil Status 'Closed' dari PR Lama
     pr_2426_df = pd.read_excel(pr_old, sheet_name=0, header=None)
-    pr_2426_data = pr_2426_df.iloc[7:].copy()
-    closed_info = pr_2426_data.iloc[:, [2, 6, 7]].copy()
+    closed_info = pr_2426_df.iloc[7:, [2, 6, 7]].copy()
     closed_info.columns = ['PR_Manual_No', 'RequestClosed', 'Item_Code']
     closed_info['Item_Code'] = closed_info['Item_Code'].astype(str).str.strip()
     closed_info['PR_Manual_No_Clean'] = closed_info['PR_Manual_No'].astype(str).str.replace(" ", "")
@@ -49,7 +64,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     pr_data = pd.merge(pr_data, closed_info[['PR_Manual_No_Clean', 'Item_Code', 'RequestClosed']], on=['PR_Manual_No_Clean', 'Item_Code'], how='left')
     pr_data['RequestClosed'] = pr_data['RequestClosed'].fillna('No')
 
-    # Proses PO (Ffill & Expand)
     def clean_po(file, tipe):
         po = pd.read_excel(file, header=13)
         po = po[['Purchase Order Number', 'PO Date', 'PR Manual No.', 'Item Code', 'Qty', 'Unnamed: 5']].copy()
@@ -72,18 +86,12 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         if ',' in pr_str or '/' in pr_str:
             parts = re.split(r'[,/]', pr_str)
             base_prefix = ""
-            for p in parts:
-                p = p.strip()
-                if not p: continue
+            for p in [x.strip() for x in parts if x.strip()]:
                 if not p.isdigit():
                     match = re.match(r'([A-Za-z.\-]+)(\d+)', p)
                     if match: base_prefix = match.group(1)
-                
                 new_row = row.to_dict()
-                if p.isdigit() and base_prefix:
-                    new_row['PR_Manual_No_Clean'] = (base_prefix + p).replace(" ", "")
-                else:
-                    new_row['PR_Manual_No_Clean'] = p.replace(" ", "")
+                new_row['PR_Manual_No_Clean'] = (base_prefix + p).replace(" ", "") if p.isdigit() and base_prefix else p.replace(" ", "")
                 expanded_rows.append(new_row)
         else:
             new_row = row.to_dict()
@@ -102,12 +110,10 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         Tipe_PO=('Tipe_PO', lambda x: ', '.join(x.dropna().unique().astype(str)))
     ).reset_index()
 
-    # Gabung PR & PO
     merged = pd.merge(pr_data, po_agg, on=['PR_Manual_No_Clean', 'Item_Code'], how='left')
     merged['PO_No'] = merged['PO_No'].fillna('')
     merged = merged[~((merged['PO_No'] == '') & (merged['RequestClosed'] == 'Yes'))]
 
-    # Proses Inbound
     inb_xls = pd.ExcelFile(inb)
     inb_df = pd.concat([pd.read_excel(inb_xls, sheet_name=s) for s in inb_xls.sheet_names])
     inb_df['ItemCode'] = inb_df['ItemCode'].astype(str).str.strip()
@@ -123,7 +129,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 
     merged[['Rcv_Date', 'Rcv_Qty']] = merged.apply(lambda row: get_inb(row['PO_No'], row['Item_Code']), axis=1)
 
-    # Penentuan Status
     def get_status(row):
         if row['PO_No'] == '': return 'Routing Approval'
         elif row['Rcv_Qty'] == 0: return 'Menunggu Pengiriman'
@@ -132,7 +137,6 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
 
     merged['Status'] = merged.apply(get_status, axis=1)
     
-    # Formatting
     merged['PR_Date'] = merged['PR_Date'].dt.strftime('%m/%d/%Y').fillna('-')
     merged['PO_Date'] = merged['PO_Date'].dt.strftime('%m/%d/%Y').fillna('-')
     merged['Rcv_Date'] = pd.to_datetime(merged['Rcv_Date'], errors='coerce').dt.strftime('%m/%d/%Y').fillna('-')
@@ -143,14 +147,20 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     return merged[final_cols]
 
 # ==========================================
-# 3. TAMPILAN DASHBOARD
+# 3. TAMPILAN DASHBOARD & AUTO-SAVE
 # ==========================================
 if process_btn:
     if all([file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound]):
         with st.spinner('Mesin sedang memproses dan membersihkan data...'):
             df_final = process_tracking_data(file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound)
             
-            st.success("✅ Data berhasil diproses!")
+            # Simpan otomatis ke server (arsip) dengan timestamp
+            timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+            saved_filename = f"Tracking_Final_{timestamp}.xlsx"
+            saved_filepath = os.path.join(OUTPUT_FOLDER, saved_filename)
+            df_final.to_excel(saved_filepath, index=False)
+            
+            st.success(f"✅ Data berhasil diproses dan diarsipkan sebagai `{saved_filename}`!")
             
             # Row 1: Metrics
             col1, col2, col3, col4 = st.columns(4)
@@ -162,13 +172,11 @@ if process_btn:
 
             st.divider()
 
-            # Row 2: Charts (Interaktif dengan Plotly)
+            # Row 2: Charts
             c1, c2 = st.columns(2)
-            
             with c1:
                 fig_pie = px.pie(df_final, names='Status', title='Proporsi Status Barang', color_discrete_sequence=px.colors.qualitative.Set2)
                 st.plotly_chart(fig_pie, use_container_width=True)
-            
             with c2:
                 top_vendors = df_final[df_final['Vendor'] != '-']['Vendor'].value_counts().head(10).reset_index()
                 top_vendors.columns = ['Vendor', 'Jumlah']
@@ -180,17 +188,17 @@ if process_btn:
             st.subheader("📋 Detail Data Tracking")
             st.dataframe(df_final, use_container_width=True, height=400)
             
-            # Tombol Download
+            # Tombol Download Langsung
             output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df_final.to_excel(writer, index=False, sheet_name='Tracking Data')
-            
+            df_final.to_excel(output, index=False, sheet_name='Tracking Data')
             st.download_button(
-                label="📥 Download Laporan Final (Excel)",
+                label="📥 Download Langsung Hasil Proses Ini",
                 data=output.getvalue(),
-                file_name="Tracking_Alur_Barang_Final.xlsx",
+                file_name=saved_filename,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary"
             )
     else:
         st.error("⚠️ Mohon unggah kelima file mentah di panel kiri sebelum memproses data.")
+else:
+    st.info("👈 Silakan *upload* file mentah di panel kiri lalu klik **Proses & Simpan Data**. Atau pilih file dari **Arsip/Download** di *sidebar* jika ingin mengambil hasil sebelumnya.")
