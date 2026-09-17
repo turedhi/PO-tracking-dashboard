@@ -22,17 +22,6 @@ st.markdown("""
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         
-        .header-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #ffffff;
-            padding: 12px 20px;
-            border: 1px solid #d0d7de;
-            border-radius: 6px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            margin-bottom: 20px;
-        }
         .main-title {font-size: 1.5rem; font-weight: 700; color: #1e3d59; margin: 0;}
         .sub-meta {font-size: 0.8rem; color: #5f6c7b;}
         
@@ -69,9 +58,9 @@ auto_load_latest_dashboard()
 # ==========================================
 # CLEAN CORPORATE HEADER WITH LOGO
 # ==========================================
-c_left, c_right = st.columns()
+c_left, c_right = st.columns([3, 1])
 with c_left:
-    c_img, c_txt = st.columns()
+    c_img, c_txt = st.columns([1, 6])
     with c_img:
         logo_path = "Logo_PT_Geoservices_4K_Transparent.jpg"
         if os.path.exists(logo_path):
@@ -107,7 +96,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     pr_data = pr_data[pr_data['PR_Manual_No'].notna() & (pr_data['PR_Manual_No'] != '') & (pr_data['PR_Manual_No'].astype(str) != 'nan')]
 
     pr_2426_df = pd.read_excel(pr_old, sheet_name=0, header=None)
-    closed_info = pr_2426_df.iloc].copy()
+    closed_info = pr_2426_df.iloc[7:, [2, 6, 7]].copy()
     closed_info.columns = ['PR_Manual_No', 'RequestClosed', 'Item_Code']
     closed_info['Item_Code'] = closed_info['Item_Code'].astype(str).str.strip()
     closed_info['PR_Manual_No_Clean'] = closed_info['PR_Manual_No'].astype(str).str.replace(" ", "")
