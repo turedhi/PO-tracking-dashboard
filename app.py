@@ -8,63 +8,41 @@ import plotly.express as px
 from datetime import datetime
 
 # ==========================================
-# 0. CONFIG & SUNFISH ERP THEME SETUP
+# 0. CONFIG & ENTERPRISE THEME SETUP
 # ==========================================
 st.set_page_config(
-    page_title="Sunfish ERP - PT. Geoservices (Warehouse Inventory)",
+    page_title="Purchase Data Tracking - PT. Geoservices",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS mimicking Sunfish ERP (DataOn Classic Blue/Gray Theme)
 st.markdown("""
     <style>
-        /* Hide default Streamlit elements */
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         
-        /* Sunfish Top Header Bar */
-        .sunfish-header-bar {
-            background: linear-gradient(180deg, #d0e4f7 0%, #0073e6 100%);
-            padding: 8px 15px;
-            color: white;
+        .header-container {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            border-bottom: 2px solid #004b93;
-            border-radius: 4px 4px 0 0;
-            margin-bottom: 0px;
+            background: #ffffff;
+            padding: 12px 20px;
+            border: 1px solid #d0d7de;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
         }
-        .sunfish-title {font-size: 1.3rem; font-weight: bold; text-shadow: 1px 1px 2px rgba(0,0,0,0.3);}
-        .sunfish-meta {font-size: 0.75rem; text-align: right;}
+        .main-title {font-size: 1.5rem; font-weight: 700; color: #1e3d59; margin: 0;}
+        .sub-meta {font-size: 0.8rem; color: #5f6c7b;}
         
-        /* Sunfish Sub-toolbar / Navigation strip */
-        .sunfish-toolbar {
-            background-color: #e6f0fa;
-            padding: 6px 12px;
-            border: 1px solid #b8d4f0;
-            border-top: none;
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            font-size: 0.85rem;
-            color: #003366;
-            margin-bottom: 15px;
-        }
-        
-        /* ERP Table style */
         .erp-panel {
             background: #ffffff;
             border: 1px solid #c0c0c0;
             border-radius: 3px;
-            padding: 12px;
-            box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+            padding: 15px;
             margin-bottom: 15px;
         }
-        
-        /* Badges */
-        .badge-latest {background-color: #2b9348; color: white; padding: 2px 6px; border-radius: 3px; font-size: 0.7rem; font-weight: bold;}
     </style>
 """, unsafe_allow_html=True)
 
@@ -72,33 +50,51 @@ OUTPUT_FOLDER = "saved_reports"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 # ==========================================
-# SUNFISH SIMULATED HEADER (TOP BANNER)
+# AUTO-LOAD LATEST REPORT ON STARTUP (NON-EMPTY)
 # ==========================================
-c_logo, c_info = st.columns([2, 2])
-with c_logo:
-    st.markdown("""
-        <div style="display: flex; align-items: center; gap: 12px; background: #005a9c; padding: 10px 15px; border-radius: 4px; color: white;">
-            <div style="background: white; padding: 4px 8px; border-radius: 3px; font-weight: 900; color: #ff6600; font-size: 1.2rem;">SunFish<span style="color:#005a9c; font-size:0.9rem;">ERP</span></div>
-            <div>
-                <div style="font-size: 0.95rem; font-weight: bold;">Enterprise Resource Planning</div>
-                <div style="font-size: 0.75rem; color: #d0e4f7;">Business Unit : PT. Geoservices (7001 - Owned Office)</div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
+def auto_load_latest_dashboard():
+    if 'df_final' not in st.session_state:
+        files = [f for f in os.listdir(OUTPUT_FOLDER) if f.endswith('.xlsx')]
+        if files:
+            files.sort(key=lambda x: os.path.getmtime(os.path.join(OUTPUT_FOLDER, x)), reverse=True)
+            latest_file = os.path.join(OUTPUT_FOLDER, files[0])
+            try:
+                st.session_state['df_final'] = pd.read_excel(latest_file)
+                st.session_state['last_saved'] = files[0]
+            except Exception:
+                pass
 
-with c_info:
-    today_str = datetime.now().strftime("%A, %d Sep %Y | %H:%M WIB")
+auto_load_latest_dashboard()
+
+# ==========================================
+# CLEAN CORPORATE HEADER WITH LOGO
+# ==========================================
+c_left, c_right = st.columns()
+with c_left:
+    c_img, c_txt = st.columns()
+    with c_img:
+        logo_path = "Logo_PT_Geoservices_4K_Transparent.jpg"
+        if os.path.exists(logo_path):
+            st.image(logo_path, width=48)
+        else:
+            st.markdown("🌐", unsafe_allow_html=True)
+    with c_txt:
+        st.markdown('<div class="main-title">Purchase Data Tracking</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sub-meta">PT. Geoservices — Warehouse & Procurement Analytics</div>', unsafe_allow_html=True)
+
+with c_right:
+    today_str = datetime.now().strftime("%A, %d %b %Y | %H:%M WIB")
     st.markdown(f"""
-        <div style="text-align: right; background: #f0f4f8; padding: 8px 15px; border: 1px solid #c0d8f0; border-radius: 4px; font-size: 0.8rem; color: #333;">
-            <b>Welcome:</b> WAREHOUSE Inventory &nbsp;|&nbsp; <b>Location:</b> [7001] PT. Geoservices<br>
-            <span style="color: #555;">📅 System Date: {today_str}</span>
+        <div style='text-align: right; background: #f8f9fa; padding: 8px 12px; border: 1px solid #e9ecef; border-radius: 4px; font-size: 0.78rem; color: #333;'>
+            <b>Business Unit:</b> PT. Geoservices (7001)<br>
+            <span style='color: #666;'>📅 {today_str}</span>
         </div>
     """, unsafe_allow_html=True)
 
 st.write("")
 
 # ==========================================
-# CORE PROCESSING ENGINE (SAFE & ROBUST)
+# CORE PROCESSING ENGINE
 # ==========================================
 @st.cache_data
 def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
@@ -111,7 +107,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     pr_data = pr_data[pr_data['PR_Manual_No'].notna() & (pr_data['PR_Manual_No'] != '') & (pr_data['PR_Manual_No'].astype(str) != 'nan')]
 
     pr_2426_df = pd.read_excel(pr_old, sheet_name=0, header=None)
-    closed_info = pr_2426_df.iloc[7:, [2, 6, 7]].copy()
+    closed_info = pr_2426_df.iloc].copy()
     closed_info.columns = ['PR_Manual_No', 'RequestClosed', 'Item_Code']
     closed_info['Item_Code'] = closed_info['Item_Code'].astype(str).str.strip()
     closed_info['PR_Manual_No_Clean'] = closed_info['PR_Manual_No'].astype(str).str.replace(" ", "")
@@ -216,7 +212,7 @@ def get_formatted_archive_list():
     return formatted_list
 
 # ==========================================
-# SUNfish MODULE MENU (3 TABS STRICT)
+# 3 TABS MENU NAVIGATION
 # ==========================================
 selected_tab = st.radio(
     "Navigation Menu",
@@ -225,18 +221,19 @@ selected_tab = st.radio(
     label_visibility="collapsed"
 )
 
-st.markdown("""<hr style="margin: 5px 0 15px 0; border: none; border-top: 1px solid #005a9c;">""", unsafe_allow_html=True)
+st.markdown("""<hr style="margin: 5px 0 15px 0; border: none; border-top: 1px solid #1e3d59;">""", unsafe_allow_html=True)
 
 # ==========================================
-# TAB 1: DASHBOARD
+# TAB 1: DASHBOARD (AUTO-LOADS LATEST)
 # ==========================================
 if selected_tab == "📊 Dashboard":
-    st.subheader("Inventory | Tracking Dashboard Summary")
+    st.subheader("Purchase Data Tracking | Executive Dashboard")
     
     if 'df_final' in st.session_state:
         df_final = st.session_state['df_final']
+        if 'last_saved' in st.session_state:
+            st.caption(f"📁 Active Dataset: `{st.session_state['last_saved']}`")
         
-        # ERP Metric Strip
         c1, c2, c3, c4 = st.columns(4)
         status_counts = df_final['Status'].value_counts()
         with c1: st.metric("Routing Approval", status_counts.get("Routing Approval", 0))
@@ -256,55 +253,54 @@ if selected_tab == "📊 Dashboard":
             fig_b.update_layout(yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig_b, use_container_width=True)
 
-        st.subheader("ERP Master Data Grid Preview")
-        st.dataframe(df_final.head(100), use_container_width=True, height=350)
+        st.subheader("Master Data Grid Preview")
+        st.dataframe(df_final.head(100), use_container_width=True, height=380)
     else:
-        st.info("ℹ️ Belum ada data aktif di sesi ini. Silakan lakukan proses ETL melalui menu **📤 Upload Data** terlebih dahulu.")
+        st.warning("⚠️ Belum ada file arsip ditemukan. Silakan unggah dokumen di menu **📤 Upload Data**.")
 
 # ==========================================
-# TAB 2: UPLOAD DATA (NON-SIDEBAR)
+# TAB 2: UPLOAD DATA
 # ==========================================
 elif selected_tab == "📤 Upload Data":
-    st.subheader("Inventory | Document Source Integration Hub")
-    st.markdown('<div class="erp-panel">Silakan unggah dokumen sumber dari ERP module (.xlsx). Sistem akan menormalisasi duplikasi spasi, konsolidasi multi-PR dalam satu PO, dan pengecekan status <i>RequestClosed</i> secara otomatis.</div>', unsafe_allow_html=True)
+    st.subheader("Purchase Data Tracking | Document Source Hub")
+    st.markdown('<div class="erp-panel">Unggah dokumen sumber (.xlsx). Sistem akan menormalisasi duplikasi spasi, konsolidasi multi-PR dalam satu PO, dan pengecekan status <i>RequestClosed</i> secara otomatis.</div>', unsafe_allow_html=True)
     
-    with st.container():
-        col_u1, col_u2 = st.columns(2)
-        with col_u1:
-            file_pr_2026 = st.file_uploader("PR Data (Base 2026)", type=['xlsx'], key="u_pr_base")
-            file_pr_lama = st.file_uploader("PRN Data (Closed Status Audit)", type=['xlsx'], key="u_pr_closed")
-            file_po_lokal = st.file_uploader("PO Data - Lokal", type=['xlsx'], key="u_po_lok")
-        with col_u2:
-            file_po_impor = st.file_uploader("PO Data - Impor", type=['xlsx'], key="u_po_imp")
-            file_inbound = st.file_uploader("Inbound Data (Warehouse Receipts)", type=['xlsx'], key="u_inb")
-            
-        st.write("")
-        run_process = st.button("⚙️ Execute ETL & Sync Engine", type="primary", use_container_width=False)
+    col_u1, col_u2 = st.columns(2)
+    with col_u1:
+        file_pr_2026 = st.file_uploader("PR Data (Base 2026)", type=['xlsx'], key="u_pr_base")
+        file_pr_lama = st.file_uploader("PRN Data (Closed Status Audit)", type=['xlsx'], key="u_pr_closed")
+        file_po_lokal = st.file_uploader("PO Data - Lokal", type=['xlsx'], key="u_po_lok")
+    with col_u2:
+        file_po_impor = st.file_uploader("PO Data - Impor", type=['xlsx'], key="u_po_imp")
+        file_inbound = st.file_uploader("Inbound Data (Warehouse Receipts)", type=['xlsx'], key="u_inb")
         
-        if run_process:
-            if all([file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound]):
-                with st.spinner('Menjalankan Sunfish Data Transformation Pipeline...'):
-                    df_final = process_tracking_data(file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound)
-                    now_dt = datetime.now()
-                    timestamp_file = now_dt.strftime("%Y%m%d_%H%M%S")
-                    saved_filename = f"Tracking_Final_{timestamp_file}.xlsx"
-                    saved_filepath = os.path.join(OUTPUT_FOLDER, saved_filename)
-                    df_final.to_excel(saved_filepath, index=False)
-                    
-                    st.session_state['df_final'] = df_final
-                    st.session_state['last_saved'] = saved_filename
-                    st.success(f"✅ Data berhasil diproses & diarsipkan ke server sebagai `{saved_filename}`! Silakan cek menu **📊 Dashboard** atau **📥 Download / Arsip**.")
-            else:
-                st.error("⚠️ Error [SF-404]: Kelima file sumber WMS/Procurement wajib diunggah lengkap!")
+    st.write("")
+    run_process = st.button("⚙️ Execute ETL & Sync Engine", type="primary")
+    
+    if run_process:
+        if all([file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound]):
+            with st.spinner('Menjalankan Data Transformation Pipeline...'):
+                df_final = process_tracking_data(file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound)
+                now_dt = datetime.now()
+                timestamp_file = now_dt.strftime("%Y%m%d_%H%M%S")
+                saved_filename = f"Tracking_Final_{timestamp_file}.xlsx"
+                saved_filepath = os.path.join(OUTPUT_FOLDER, saved_filename)
+                df_final.to_excel(saved_filepath, index=False)
+                
+                st.session_state['df_final'] = df_final
+                st.session_state['last_saved'] = saved_filename
+                st.success(f"✅ Data berhasil diproses & diarsipkan ke server sebagai `{saved_filename}`! Silakan cek menu **📊 Dashboard**.")
+        else:
+            st.error("⚠️ Error: Kelima file sumber wajib diunggah lengkap!")
 
 # ==========================================
 # TAB 3: DOWNLOAD / ARSIP
 # ==========================================
 elif selected_tab == "📥 Download / Arsip":
-    st.subheader("Inventory | Enterprise Audit & Document Repository")
-    st.markdown('<div class="erp-panel">Arsip historis hasil eksekusi pengolahan data tersimpan di server Cloud. File terbaru diberi penanda khusus.</div>', unsafe_allow_html=True)
+    st.subheader("Purchase Data Tracking | Audit & Document Repository")
+    st.markdown('<div class="erp-panel">Arsip historis hasil eksekusi pengolahan data tersimpan di server. File terbaru diberi penanda khusus.</div>', unsafe_allow_html=True)
     
-    archive_items = getFormattedList = get_formatted_archive_list()
+    archive_items = get_formatted_archive_list()
     
     if archive_items:
         labels = [item[0] for item in archive_items]
