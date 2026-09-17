@@ -5,47 +5,69 @@ import re
 import io
 import os
 import plotly.express as px
+from datetime import datetime
 
-st.set_page_config(page_title="PO Tracking Dashboard", page_icon="📦", layout="wide")
+# ==========================================
+# 0. CONFIG & ENTERPRISE THEME SETUP
+# ==========================================
+st.set_page_config(
+    page_title="PT Geoservices - Supply Chain ERP",
+    page_icon="🏭",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for Enterprise Look
+st.markdown("""
+    <style>
+        .main-header {font-size: 2rem; font-weight: 700; color: #1e3d59; margin-bottom: 0px;}
+        .sub-header {font-size: 1rem; color: #5f6c7b; margin-bottom: 20px;}
+        .erp-card {padding: 20px; border-radius: 8px; background-color: #f8f9fa; border: 1px solid #e9ecef; margin-bottom: 15px;}
+        .badge-new {background-color: #2b9348; color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: bold;}
+    </style>
+""", unsafe_allow_html=True)
 
 OUTPUT_FOLDER = "saved_reports"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-st.title("📦 Dashboard Tracking Pengadaan Barang")
-st.markdown("Unggah file PR dan PO terbaru untuk memproses dan memperbarui status pelacakan barang.")
+# Top Bar / Enterprise Header
+col_title, col_date = st.columns([3, 1])
+with col_title:
+    st.markdown('<div class="main-header">🏭 PT GEOSERVICES — WMS & PROCUREMENT ERP</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">Module: Purchase Request to Inbound Tracking Engine</div>', unsafe_allow_html=True)
+with col_date:
+    today_str = datetime.now().strftime("%A, %d %B %Y | %H:%M WIB")
+    st.markdown(f"<div style='text-align: right; background: #e9ecef; padding: 10px; border-radius: 6px; font-size: 0.85rem; font-weight: 600;'>📅 Hari Ini:<br>{today_str}</div>", unsafe_allow_html=True)
+
+st.divider()
 
 # ==========================================
-# 1. UI UPLOAD FILE (SIDEBAR)
+# 1. SIDEBAR NAVIGATION & UPLOADERS
 # ==========================================
 with st.sidebar:
-    st.header("📂 Upload Data Mentah")
-    file_pr_2026 = st.file_uploader("1. PR 2026 (Base)", type=['xlsx'])
-    file_pr_lama = st.file_uploader("2. PR 2024-2026 (Closed Status)", type=['xlsx'])
-    file_po_lokal = st.file_uploader("3. PO 2026 Lokal", type=['xlsx'])
-    file_po_impor = st.file_uploader("4. PO 2026 Impor", type=['xlsx'])
-    file_inbound = st.file_uploader("5. Inbound 2025-2026", type=['xlsx'])
+    st.image("https://img.icons8.com/color/96/warehouse.png", width=60)
+    st.title("Navigation")
+    menu = st.radio("Pilih Menu:", ["🚀 Processing & Dashboard", "📁 Arsip Dokumen (Repository)"])
     
-    process_btn = st.button("🚀 Proses & Simpan Data", use_container_width=True, type="primary")
-
     st.divider()
-    st.subheader("📁 Arsip / Download Sewaktu-waktu")
-    saved_files = os.listdir(OUTPUT_FOLDER)
-    selected_saved = st.selectbox("Pilih file tersimpan:", ["-- Pilih --"] + saved_files)
-    if selected_saved != "-- Pilih --":
-        file_path_dl = os.path.join(OUTPUT_FOLDER, selected_saved)
-        with open(file_path_dl, "rb") as f:
-            st.download_button(
-                label=f"📥 Download {selected_saved}",
-                data=f.read(),
-                file_name=selected_saved,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+    st.header("📂 Data Source Input")
+    st.info("Unggah dokumen sumber berformat .xlsx")
+    
+    # Nama disesuaikan tapi variabel backend aman
+    file_pr_2026 = st.file_uploader("PR Data", type=['xlsx'], key="pr_base")
+    file_pr_lama = st.file_uploader("PRN Data", type=['xlsx'], key="pr_closed")
+    file_po_lokal = st.file_uploader("PO Data - Lokal", type=['xlsx'], key="po_lok")
+    file_po_impor = st.file_uploader("PO Data - Impor", type=['xlsx'], key="po_imp")
+    file_inbound = st.file_uploader("Inbound Data", type=['xlsx'], key="inb")
+    
+    process_btn = st.button("⚙️ Execute Processing", use_container_width=True, type="primary")
 
 # ==========================================
-# 2. LOGIKA PEMROSESAN DATA
+# 2. CORE PROCESSING ENGINE (SAFE & ROBUST)
 # ==========================================
 @st.cache_data
 def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
+    # Proses PR Base
     pr_df = pd.read_excel(pr_new, header=1)
     pr_data = pr_df[['Date', 'PR Number \n(Manual)', 'Item \nCode', 'Item Description', 'Qty']].copy()
     pr_data.columns = ['PR_Date', 'PR_Manual_No', 'Item_Code', 'Item_Name', 'PR_Qty']
@@ -54,6 +76,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     pr_data['PR_Date'] = pd.to_datetime(pr_data['PR_Date'], errors='coerce')
     pr_data = pr_data[pr_data['PR_Manual_No'].notna() & (pr_data['PR_Manual_No'] != '') & (pr_data['PR_Manual_No'].astype(str) != 'nan')]
 
+    # Ambil Status 'Closed' dari PRN Data
     pr_2426_df = pd.read_excel(pr_old, sheet_name=0, header=None)
     closed_info = pr_2426_df.iloc[7:, [2, 6, 7]].copy()
     closed_info.columns = ['PR_Manual_No', 'RequestClosed', 'Item_Code']
@@ -64,6 +87,7 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     pr_data = pd.merge(pr_data, closed_info[['PR_Manual_No_Clean', 'Item_Code', 'RequestClosed']], on=['PR_Manual_No_Clean', 'Item_Code'], how='left')
     pr_data['RequestClosed'] = pr_data['RequestClosed'].fillna('No')
 
+    # Proses PO (Ffill & Expand)
     def clean_po(file, tipe):
         po = pd.read_excel(file, header=13)
         po = po[['Purchase Order Number', 'PO Date', 'PR Manual No.', 'Item Code', 'Qty', 'Unnamed: 5']].copy()
@@ -110,10 +134,12 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
         Tipe_PO=('Tipe_PO', lambda x: ', '.join(x.dropna().unique().astype(str)))
     ).reset_index()
 
+    # Gabung PR & PO
     merged = pd.merge(pr_data, po_agg, on=['PR_Manual_No_Clean', 'Item_Code'], how='left')
     merged['PO_No'] = merged['PO_No'].fillna('')
     merged = merged[~((merged['PO_No'] == '') & (merged['RequestClosed'] == 'Yes'))]
 
+    # Proses Inbound Data
     inb_xls = pd.ExcelFile(inb)
     inb_df = pd.concat([pd.read_excel(inb_xls, sheet_name=s) for s in inb_xls.sheet_names])
     inb_df['ItemCode'] = inb_df['ItemCode'].astype(str).str.strip()
@@ -146,59 +172,116 @@ def process_tracking_data(pr_new, pr_old, po_lok, po_imp, inb):
     final_cols = ['PR_Date', 'PR_Manual_No', 'Item_Code', 'Item_Name', 'PR_Qty', 'PO_Date', 'PO_No', 'Vendor', 'Tipe_PO', 'PO_Qty', 'Rcv_Date', 'Rcv_Qty', 'Status']
     return merged[final_cols]
 
+# Helper function untuk format arsip dengan Tanggal/Jam & Badge Terbaru
+def get_formatted_archive_list():
+    files = [f for f in os.listdir(OUTPUT_FOLDER) if f.endswith('.xlsx')]
+    if not files:
+        return []
+    # Sort by modification time descending (latest first)
+    files.sort(key=lambda x: os.path.getmtime(os.path.join(OUTPUT_FOLDER, x)), reverse=True)
+    
+    formatted_list = []
+    for idx, f in enumerate(files):
+        mtime = os.path.getmtime(os.path.join(OUTPUT_FOLDER, f))
+        dt_str = datetime.fromtimestamp(mtime).strftime("%d/%m/%Y %H:%M:%S")
+        label = f"[{dt_str}] {f}"
+        if idx == 0:
+            label += " ⭐ [TERBARU]"
+        formatted_list.append((label, f))
+    return formatted_list
+
 # ==========================================
-# 3. TAMPILAN DASHBOARD & AUTO-SAVE
+# 3. ROUTING MENU
 # ==========================================
-if process_btn:
-    if all([file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound]):
-        with st.spinner('Mesin sedang memproses dan membersihkan data...'):
-            df_final = process_tracking_data(file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound)
+if menu == "🚀 Processing & Dashboard":
+    if process_btn:
+        if all([file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound]):
+            with st.spinner('Menjalankan pipeline ERP... Normalisasi data sedang berjalan...'):
+                df_final = process_tracking_data(file_pr_2026, file_pr_lama, file_po_lokal, file_po_impor, file_inbound)
+                
+                # Simpan otomatis ke server (arsip) dengan timestamp human-friendly
+                now_dt = datetime.now()
+                timestamp_file = now_dt.strftime("%Y%m%d_%H%M%S")
+                saved_filename = f"Tracking_Final_{timestamp_file}.xlsx"
+                saved_filepath = os.path.join(OUTPUT_FOLDER, saved_filename)
+                df_final.to_excel(saved_filepath, index=False)
+                
+                st.success(f"✅ Eksekusi selesai! File terarsip sebagai `{saved_filename}`")
+                
+                # Simpan ke session state buat tampilkan dashboard
+                st.session_state['df_final'] = df_final
+                st.session_state['last_saved'] = saved_filename
+        else:
+            st.error("⚠️ Mohon lengkapi kelima file sumber di panel sebelah kiri.")
             
-            # Simpan otomatis ke server (arsip) dengan timestamp
-            timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-            saved_filename = f"Tracking_Final_{timestamp}.xlsx"
-            saved_filepath = os.path.join(OUTPUT_FOLDER, saved_filename)
-            df_final.to_excel(saved_filepath, index=False)
-            
-            st.success(f"✅ Data berhasil diproses dan diarsipkan sebagai `{saved_filename}`!")
-            
-            # Row 1: Metrics
-            col1, col2, col3, col4 = st.columns(4)
-            status_counts = df_final['Status'].value_counts()
-            col1.metric("Routing Approval", status_counts.get("Routing Approval", 0))
-            col2.metric("Menunggu Pengiriman", status_counts.get("Menunggu Pengiriman", 0))
-            col3.metric("Diterima Sebagian", status_counts.get("Diterima Sebagian", 0))
-            col4.metric("Sudah Diterima", status_counts.get("Sudah Diterima", 0))
+    # Tampilkan Dashboard jika data tersedia di session atau baru diproses
+    if 'df_final' in st.session_state:
+        df_final = st.session_state['df_final']
+        
+        st.subheader("📊 Executive Summary Metrics")
+        col1, col2, col3, col4 = st.columns(4)
+        status_counts = df_final['Status'].value_counts()
+        col1.metric("Routing Approval", status_counts.get("Routing Approval", 0))
+        col2.metric("Menunggu Pengiriman", status_counts.get("Menunggu Pengiriman", 0))
+        col3.metric("Diterima Sebagian", status_counts.get("Diterima Sebagian", 0))
+        col4.metric("Sudah Diterima", status_counts.get("Sudah Diterima", 0))
 
-            st.divider()
+        st.divider()
 
-            # Row 2: Charts
-            c1, c2 = st.columns(2)
-            with c1:
-                fig_pie = px.pie(df_final, names='Status', title='Proporsi Status Barang', color_discrete_sequence=px.colors.qualitative.Set2)
-                st.plotly_chart(fig_pie, use_container_width=True)
-            with c2:
-                top_vendors = df_final[df_final['Vendor'] != '-']['Vendor'].value_counts().head(10).reset_index()
-                top_vendors.columns = ['Vendor', 'Jumlah']
-                fig_bar = px.bar(top_vendors, x='Jumlah', y='Vendor', orientation='h', title='Top 10 Vendor', color='Jumlah', color_continuous_scale='viridis')
-                fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
-                st.plotly_chart(fig_bar, use_container_width=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            fig_pie = px.pie(df_final, names='Status', title='Proporsi Status Supply Chain', color_discrete_sequence=px.colors.qualitative.Set2)
+            st.plotly_chart(fig_pie, use_container_width=True)
+        with c2:
+            top_vendors = df_final[df_final['Vendor'] != '-']['Vendor'].value_counts().head(10).reset_index()
+            top_vendors.columns = ['Vendor', 'Jumlah']
+            fig_bar = px.bar(top_vendors, x='Jumlah', y='Vendor', orientation='h', title='Top 10 Active Vendors', color='Jumlah', color_continuous_scale='viridis')
+            fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
+            st.plotly_chart(fig_bar, use_container_width=True)
 
-            # Row 3: Tabel Data
-            st.subheader("📋 Detail Data Tracking")
-            st.dataframe(df_final, use_container_width=True, height=400)
-            
-            # Tombol Download Langsung
-            output = io.BytesIO()
-            df_final.to_excel(output, index=False, sheet_name='Tracking Data')
-            st.download_button(
-                label="📥 Download Langsung Hasil Proses Ini",
-                data=output.getvalue(),
-                file_name=saved_filename,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary"
-            )
+        st.subheader("📋 Master Tracking Dataset")
+        st.dataframe(df_final, use_container_width=True, height=450)
+        
+        # Download Quick Action
+        output = io.BytesIO()
+        df_final.to_excel(output, index=False, sheet_name='Tracking Data')
+        st.download_button(
+            label="📥 Download Hasil Proses Sesi Ini",
+            data=output.getvalue(),
+            file_name=st.session_state.get('last_saved', 'Tracking_Final.xlsx'),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary"
+        )
     else:
-        st.error("⚠️ Mohon unggah kelima file mentah di panel kiri sebelum memproses data.")
-else:
-    st.info("👈 Silakan *upload* file mentah di panel kiri lalu klik **Proses & Simpan Data**. Atau pilih file dari **Arsip/Download** di *sidebar* jika ingin mengambil hasil sebelumnya.")
+        st.info("👈 Silakan unggah dokumen di *sidebar* dan klik **Execute Processing** untuk melihat *dashboard*.")
+
+elif menu == "📁 Arsip Dokumen (Repository)":
+        st.subheader("🗄️ Enterprise Repository & Audit Trail")
+        st.markdown("Daftar seluruh laporan hasil *processing* masa lalu yang tersimpan di server.")
+        
+        archive_items = get_formatted_archive_list()
+        
+        if archive_items:
+            labels = [item[0] for item in archive_items]
+            filenames = [item[1] for item in archive_items]
+            
+            selected_label = st.selectbox("Pilih Dokumen Arsip:", labels)
+            selected_filename = dict(zip(labels, filenames))[selected_label]
+            
+            file_path_dl = os.path.join(OUTPUT_FOLDER, selected_filename)
+            if os.path.exists(file_path_dl):
+                # Preview mini
+                df_preview = pd.read_excel(file_path_dl)
+                st.write(f"**Preview file:** `{selected_filename}` ({len(df_preview)} baris)")
+                st.dataframe(df_preview.head(50), use_container_width=True)
+                
+                with open(file_path_dl, "rb") as f:
+                    st.download_button(
+                        label=f"📥 Download Arsip ({selected_filename})",
+                        data=f.read(),
+                        file_name=selected_filename,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        type="primary"
+                    )
+        else:
+            st.warning("Belum ada arsip tersimpan. Jalankan *Processing* terlebih dahulu di menu sebelah.")
